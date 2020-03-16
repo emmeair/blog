@@ -1,25 +1,27 @@
 package user
 
 import (
+	"blog/models"
+	"blog/models/user"
 	"blog/utils"
 	LocalValidate "blog/validate"
-	"fmt"
 	"github.com/gin-gonic/gin"
 )
 
 type RegisterForm struct {
-	Username string `validate:"required" form:"username"`
-	Email    string `validate:"required" form:"email"`
-	Password string `validate:"required" form:"password"`
+	Username        string `validate:"required" form:"username"`
+	Email           string `validate:"required" form:"email"`
+	Password        string `validate:"eqfield=ConfirmPassword" form:"password"`
+	ConfirmPassword string `validate:"required" form:"confirm_password"`
 }
 
 func Register(c *gin.Context) {
 
 	var input RegisterForm
 
-	if nil != c.BindQuery(&input) {
+	if nil != c.Bind(&input) {
 
-		utils.ResponseJson{Context: c}.ToJson(1, "参数绑定失败", nil)
+		utils.ResponseJson{Context: c}.ToJson(-1, "参数绑定失败", nil)
 		return
 	}
 
@@ -29,12 +31,34 @@ func Register(c *gin.Context) {
 
 		for _, err := range validate.Errors {
 
-			utils.ResponseJson{Context: c}.ToJson(1, err, nil)
+			utils.ResponseJson{Context: c}.ToJson(-1, err, nil)
 			return
 		}
 
 	}
+	checkMember := user.Members{}
 
-	fmt.Println(input)
+	models.Db.Where("email = ?", input.Email).First(&checkMember)
 
+	if checkMember.ID != 0 {
+
+		utils.ResponseJson{Context: c}.ToJson(-1, "该邮箱已经被使用", nil)
+		return
+	}
+	member := user.Members{}
+
+	member.Username = input.Username
+	member.Email = input.Email
+	member.Password = input.Password
+	tx := models.Db.Begin()
+
+	if tx.Create(&member).Error != nil {
+		tx.Rollback()
+		utils.ResponseJson{Context: c}.ToJson(-1, "创建账户失败", nil)
+		return
+	}
+
+	tx.Commit()
+	utils.ResponseJson{Context: c}.ToJson(1, "创建账户成功", nil)
+	return
 }
